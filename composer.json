@@ -8,7 +8,8 @@
         "公众号"
     ],
     "homepage": "https://github.com/xibusuper/weapp",
-    "license": "proprietary",
+    "license": "MIT",
+    "minimum-stabiliy":"dev",
     "authors": [
         {
             "name": "xibusuper",
