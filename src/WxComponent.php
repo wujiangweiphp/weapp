@@ -58,7 +58,7 @@ class WxComponent
     const JS2_OPENID_URL              = '/sns/component/jscode2session'; //第三方平台 jscode 获取openid
     const GET_QR_CODE                 = '/wxa/getwxacode';               //获取场景二维码
     const GET_SCENE_QRCODE            = '/wxa/getwxacodeunlimit';        //获取小程序二维码
-    const WX_PLUGIN                   = '/wxa/plugin';                   //小程序相关的插件操作url
+    const WX_PLUGIN                   = '/wxa/plugin?access_token=';                   //小程序相关的插件操作url
 
     public $component_appid;
     public $component_appsecret;
@@ -1048,7 +1048,7 @@ class WxComponent
     public function getWxPluginList($app_access_token)
     {
         $params = array('action' => 'list');
-        $result = $this->httpPost(self::API_URL_PREFIX . self::WX_PLUGIN . $app_access_token, json_encode($params));
+        $result = $this->httpPost(self::API_URL_PREFIX_MINI_PROGRAM . self::WX_PLUGIN . $app_access_token, json_encode($params));
         if ($result) {
             $json = json_decode($result, true);
             if (!$json || !empty($json['errcode'])) {
@@ -1074,7 +1074,7 @@ class WxComponent
     public function addWxPlugin($app_access_token, $plugin_appid)
     {
         $params = array('action' => 'apply', 'plugin_appid' => $plugin_appid);
-        $result = $this->httpPost(self::API_URL_PREFIX . self::WX_PLUGIN . $app_access_token, json_encode($params));
+        $result = $this->httpPost(self::API_URL_PREFIX_MINI_PROGRAM . self::WX_PLUGIN . $app_access_token, json_encode($params));
         if ($result) {
             $json = json_decode($result, true);
             if (!$json || !empty($json['errcode'])) {
@@ -1100,7 +1100,7 @@ class WxComponent
     public function delWxPlugin($app_access_token, $plugin_appid)
     {
         $params = array('action' => 'unbind', 'plugin_appid' => $plugin_appid);
-        $result = $this->httpPost(self::API_URL_PREFIX . self::WX_PLUGIN . $app_access_token, json_encode($params));
+        $result = $this->httpPost(self::API_URL_PREFIX_MINI_PROGRAM . self::WX_PLUGIN . $app_access_token, json_encode($params));
         if ($result) {
             $json = json_decode($result, true);
             if (!$json || !empty($json['errcode'])) {
@@ -1126,7 +1126,7 @@ class WxComponent
     public function updateWxPlugin($app_access_token, $plugin_appid, $user_version)
     {
         $params = array('action' => 'update', 'user_version' => $user_version, 'plugin_appid' => $plugin_appid);
-        $result = $this->httpPost(self::API_URL_PREFIX . self::WX_PLUGIN . $app_access_token, json_encode($params));
+        $result = $this->httpPost(self::API_URL_PREFIX_MINI_PROGRAM . self::WX_PLUGIN . $app_access_token, json_encode($params));
         if ($result) {
             $json = json_decode($result, true);
             if (!$json || !empty($json['errcode'])) {
