@@ -268,10 +268,10 @@ class Wechat2
      */
     public function checkSignature($str = '')
     {
-        $signature = isset($_GET["signature"]) ? $_GET["signature"] : '';
-        $signature = isset($_GET["msg_signature"]) ? $_GET["msg_signature"] : $signature; //如果存在加密验证则用加密验证段
-        $timestamp = isset($_GET["timestamp"]) ? $_GET["timestamp"] : '';
-        $nonce = isset($_GET["nonce"]) ? $_GET["nonce"] : '';
+        $signature = isset($_REQUEST["signature"]) ? $_REQUEST["signature"] : '';
+        $signature = isset($_REQUEST["msg_signature"]) ? $_REQUEST["msg_signature"] : $signature; //如果存在加密验证则用加密验证段
+        $timestamp = isset($_REQUEST["timestamp"]) ? $_REQUEST["timestamp"] : '';
+        $nonce = isset($_REQUEST["nonce"]) ? $_REQUEST["nonce"] : '';
 
         $token = $this->token;
         $tmpArr = array($token, $timestamp, $nonce, $str);
@@ -294,9 +294,9 @@ class Wechat2
     {
         $encryptStr = "";
         if ($_SERVER['REQUEST_METHOD'] == "POST") {
-            $postStr = $raw ?? file_get_contents("php://input");
+            $postStr = $raw ? $raw : file_get_contents("php://input");
             $array = (array)simplexml_load_string($postStr, 'SimpleXMLElement', LIBXML_NOCDATA);
-            $this->encrypt_type = isset($_GET["encrypt_type"]) ? $_GET["encrypt_type"] : '';
+            $this->encrypt_type = isset($_REQUEST["encrypt_type"]) ? $_REQUEST["encrypt_type"] : '';
             if ($this->encrypt_type == 'aes') { //aes加密
                 $this->log($postStr);
                 $encryptStr = $array['Encrypt'];
@@ -315,8 +315,8 @@ class Wechat2
             } else {
                 $this->postxml = $postStr;
             }
-        } elseif (isset($_GET["echostr"])) {
-            $echoStr = $_GET["echostr"];
+        } elseif (isset($_REQUEST["echostr"])) {
+            $echoStr = $_REQUEST["echostr"];
             if ($return) {
                 if ($this->checkSignature())
                     return $echoStr;
@@ -387,7 +387,7 @@ class Wechat2
     public function getRev($raw = null)
     {
         if ($this->_receive) return $this;
-        $postStr = !empty($this->postxml) ? $this->postxml : ($raw ??file_get_contents("php://input"));
+        $postStr = !empty($this->postxml) ? $this->postxml : ($raw ? $raw : file_get_contents("php://input"));
         //兼顾使用明文又不想调用valid()方法的情况
         $this->log($postStr);
         if (!empty($postStr)) {

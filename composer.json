@@ -1,5 +1,5 @@
 {
-    "name": "xibusuper/weapp",
+    "name": "wujiangweiphp/weapp",
     "description": "微信小程序第三方平台SDK,公众号第三方平台SDK，代实现公众号业务，代实现小程序业务",
     "keywords": [
         "wechat",
@@ -7,14 +7,14 @@
         "小程序",
         "公众号"
     ],
-    "homepage": "https://github.com/xibusuper/weapp",
+    "homepage": "https://github.com/wujiangweiphp/weapp",
     "license": "MIT",
     "minimum-stabiliy":"dev",
     "authors": [
         {
-            "name": "xibusuper",
-            "email": "253039738@qq.com",
-            "homepage": "http://github.com/xibusuper"
+            "name": "wujiangweiphp",
+            "email": "wujiangwei123@126.com",
+            "homepage": "http://github.com/wujiangweiphp"
         }
     ],
     "autoload": {
@@ -23,6 +23,6 @@
         }
     },
     "require": {
-        "php":">=7.0"
+        "php":">=5.5"
     }
 }

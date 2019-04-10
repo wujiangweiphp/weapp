@@ -41,6 +41,7 @@ class WxComponent
     // 代实现小程序
     const API_URL_PREFIX_MINI_PROGRAM = 'https://api.weixin.qq.com'; // 小程序
     const SET_DOMAIN                  = '/wxa/modify_domain';
+    const SET_WEB_DOMAIN              = '/wxa/setwebviewdomain';
     const BIND_TEST_USER              = '/wxa/bind_tester'; // 绑定小程序体验者
     const UNBIND_TEST_USER            = '/wxa/unbind_tester';
     const GET_DRAFT_TEMPLATE          = '/wxa/gettemplatedraftlist';
@@ -54,6 +55,10 @@ class WxComponent
     const AUDIT_TEMPLATE              = '/wxa/submit_audit';
     const PUBLISH_TEMPLATE            = '/wxa/release';
     const AUDIT_STATUS                = '/wxa/get_auditstatus';
+    const JS2_OPENID_URL              = '/sns/component/jscode2session'; //第三方平台 jscode 获取openid
+    const GET_QR_CODE                 = '/wxa/getwxacode';               //获取场景二维码
+    const GET_SCENE_QRCODE            = '/wxa/getwxacodeunlimit';        //获取小程序二维码
+    const WX_PLUGIN                   = '/wxa/plugin';                   //小程序相关的插件操作url
 
     public $component_appid;
     public $component_appsecret;
@@ -339,7 +344,7 @@ class WxComponent
         if ($_SERVER['REQUEST_METHOD'] == "POST") {
             $dec_msg = "";
 
-            $postStr = $raw ?? file_get_contents("php://input");
+            $postStr = $raw ? $raw : file_get_contents("php://input");
             if (!$postStr) {
                 $postStr = $GLOBALS['HTTP_RAW_POST_DATA'];
             }
@@ -349,7 +354,7 @@ class WxComponent
             }
 
             $pc  = new \WXBizMsgCrypt($this->token, $this->encodingAesKey, $this->component_appid);
-            $ret = $pc->decryptMsg($_GET['msg_signature'], $_GET['timestamp'], $_GET['nonce'], $postStr, $dec_msg);
+            $ret = $pc->decryptMsg($_REQUEST['msg_signature'], $_REQUEST['timestamp'], $_REQUEST['nonce'], $postStr, $dec_msg);
             if ($ret === 0) {
                 $arr = (array) simplexml_load_string($dec_msg, 'SimpleXMLElement', LIBXML_NOCDATA);
                 return $arr;
@@ -477,9 +482,26 @@ class WxComponent
         }
         return false;
     }
-    public function setMiniProgramDomain($appID, $params, $accessToken)
+    public function setMiniProgramDomain($params, $accessToken)
     {
         $result = $this->httpPost(static::API_URL_PREFIX_MINI_PROGRAM . static::SET_DOMAIN . '?access_token=' . $accessToken, json_encode($params));
+        if ($result) {
+            $json = json_decode($result, true);
+            if (!$json || !empty($json['errcode'])) {
+                $this->errCode = $json['errcode'];
+                $this->errMsg  = $json['errmsg'];
+                return false;
+            } else {
+                if ($json['errcode'] == 0) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+    public function setMiniProgramWebDomain($params, $accessToken)
+    {
+        $result = $this->httpPost(static::API_URL_PREFIX_MINI_PROGRAM . static::SET_WEB_DOMAIN . '?access_token=' . $accessToken, json_encode($params));
         if ($result) {
             $json = json_decode($result, true);
             if (!$json || !empty($json['errcode'])) {
@@ -648,7 +670,7 @@ class WxComponent
     }
     public function publishTemplate($accessToken)
     {
-        $result = $this->httpPost(static::API_URL_PREFIX_MINI_PROGRAM . static::PUBLISH_TEMPLATE . '?access_token=' . $accessToken, json_encode(new stdClass()));
+        $result = $this->httpPost(static::API_URL_PREFIX_MINI_PROGRAM . static::PUBLISH_TEMPLATE . '?access_token=' . $accessToken, '{}');
         if ($result) {
             $json = json_decode($result, true);
             if (!$json || !empty($json['errcode'])) {
@@ -733,10 +755,54 @@ class WxComponent
         $aStatus  = curl_getinfo($oCurl);
         curl_close($oCurl);
         if (intval($aStatus["http_code"]) == 200) {
-            $this->log("wxcomponent httpPost: {$strPOST} recv:" . $sContent);
+            $this->log("wxcomponent httpPost: {$strPOST},url is {$url}  recv:" . $sContent);
             return $sContent;
         } else {
             $this->log("wxcomponent httpPost: {$strPOST} recv error {$url}, param:{$param} aStatus:" . print_r($aStatus, true));
+            return false;
+        }
+    }
+
+    /**
+     * GET 请求
+     * @param string $url
+     * @param  array|string $param
+     * @return string content
+     */
+    private function httpGet($url,$param = '')
+    {
+        $oCurl = curl_init();
+        if (stripos($url, "https://") !== false) {
+            curl_setopt($oCurl, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($oCurl, CURLOPT_SSL_VERIFYHOST, false);
+            curl_setopt($oCurl, CURLOPT_SSLVERSION, 1); //CURL_SSLVERSION_TLSv1
+        }
+        if (is_string($param)) {
+            $strGET = $param;
+        } else {
+            $aGET = array();
+            foreach ($param as $key => $val) {
+                if (is_array($val)) {
+                    foreach ($val as $_k => $_v) {
+                        $aGET[] = $key . "[]=" . urlencode($_v);
+                    }
+                } else {
+                    $aGET[] = $key . "=" . urlencode($val);
+                }
+            }
+            $strGET = join("&", $aGET);
+        }
+        $url = empty($strGET) ? $url : '?' . $strGET;
+        curl_setopt($oCurl, CURLOPT_URL, $url);
+        curl_setopt($oCurl, CURLOPT_RETURNTRANSFER, 1);
+        $sContent = curl_exec($oCurl);
+        $aStatus  = curl_getinfo($oCurl);
+        curl_close($oCurl);
+        if (intval($aStatus["http_code"]) == 200) {
+            $this->log("wxcomponent httpGet: {$strGET},url is {$url}  recv:" . $sContent);
+            return $sContent;
+        } else {
+            $this->log("wxcomponent httpGet: {$strGET} recv error {$url}, param:{$param} aStatus:" . print_r($aStatus, true));
             return false;
         }
     }
@@ -802,5 +868,275 @@ class WxComponent
         }
         //Return numerical JSON
         return '{' . $json . '}'; //Return associative JSON
+    }
+
+    /**.
+     * @todo: 第三方平台获取小程序的openid
+     * @author： friker
+     * @date: 2019/3/26
+     * @param string $code  js传递的code
+     * @param string $appid  小程序 openid
+     * @param string $access_token  第三方access_token
+     * @return bool|mixed
+     */
+    public function getOpenidByCode($code = '',$appid = '',$access_token = ''){
+        if (empty($code) || empty($appid) || empty($access_token)) {
+            return false;
+        }
+
+        $http_data = array(
+            'appid' => $appid,
+            'js_code' => $code,
+            'grant_type' => 'authorization_code',
+            'component_appid' => $this->component_appid,
+            'component_access_token' => $access_token
+        );
+
+        $result = $this->httpGet(self::API_URL_PREFIX_MINI_PROGRAM . self::JS2_OPENID_URL .'?'. http_build_query($http_data));
+        if ($result) {
+            $json = json_decode($result, true);
+            if (!$json || !empty($json['errcode'])) {
+                $this->errCode = $json['errcode'];
+                $this->errMsg  = $json['errmsg'];
+                return false;
+            }
+            return $json;
+        }
+        return false;
+    }
+
+    /**
+     * @todo: 获取二维码
+     * @author： friker
+     * @date: 2019/3/26
+     * @param string $app_access_token  小程序 access_token
+     * @param array $params 二维码相关参数
+     * @return bool|string
+     */
+    public function getMicroQrCode($app_access_token ='' ,$params = array()){
+        $result = $this->httpPost(static::API_URL_PREFIX_MINI_PROGRAM . static::GET_QR_CODE . '?access_token=' . $app_access_token, json_encode($params));
+        if ($result) {
+            $json = json_decode($result, true);
+            return $result; // 图片二进制流
+        }
+        return false;
+    }
+
+    /**
+     * @todo: 获取场景二维码
+     * @author： friker
+     * @date: 2019/3/26
+     * @param string $app_access_token  小程序 access_token
+     * @param array $params 二维码相关参数
+     * @return bool|string
+     */
+    public function getSceneQrCode($app_access_token ='' ,$params = array()){
+        $result = $this->httpPost(static::API_URL_PREFIX_MINI_PROGRAM . static::GET_SCENE_QRCODE . '?access_token=' . $app_access_token, json_encode($params));
+        if ($result) {
+            $json = json_decode($result, true);
+            return $result; // 图片二进制流
+        }
+        return false;
+    }
+
+    /***
+     * @todo: 处理文本消息
+     * @author： friker
+     * @date: 2019/3/28
+     * @param string $appid
+     * @param string $raw
+     * @return array|bool
+     */
+    public function dealReceiveMessage($component_access_token = '',$raw = '')
+    {
+        if ($_SERVER['REQUEST_METHOD'] == "POST") {
+            $dec_msg = "";
+            $postStr = $raw ? $raw : file_get_contents("php://input");
+            if (!$postStr) {
+                $postStr = $GLOBALS['HTTP_RAW_POST_DATA'];
+            }
+            if (!$postStr) {
+                return false;
+            }
+            $wxBizMsgCrypt = new \WXBizMsgCrypt($this->token,$this->encodingAesKey,$this->component_appid);
+            $ret = $wxBizMsgCrypt->decryptMsg($_REQUEST['msg_signature'], $_REQUEST['timestamp'], $_REQUEST['nonce'], $postStr, $dec_msg); //解密串
+            if ($ret === 0) {
+                //$arr = (array) simplexml_load_string($dec_msg, 'SimpleXMLElement', LIBXML_NOCDATA);
+                $this->publishMessage($dec_msg,$component_access_token);
+                $this->log('显示接收消息，原解密为：'.$dec_msg .'---结束');
+                return $ret;
+            } else {
+                return false;
+            }
+        } else {
+            return false;
+        }
+    }
+
+    /**
+     * @todo: 处理发布消息
+     * @author： friker
+     * @date: 2019/3/28
+     * @param string $decode_msg  解密后参数
+     * @param $component_access_token
+     */
+    public function publishMessage($decode_msg = '',$component_access_token)
+    {
+        $param = array(
+            'token' => $this->token,
+            'appid' => $this->component_appid,
+            'encodingaeskey' => $this->encodingAesKey
+        );
+        $wechat2 = new \Wechat2($param);
+        $content     = $wechat2->getRev($decode_msg)->getRevContent();
+        $msg_type = $wechat2->getRevType();
+        $content_exec = '';
+        switch ($msg_type){
+            case 'text' :
+                $needle   = 'QUERY_AUTH_CODE:';
+                $tmp_array = explode($needle, $content);
+                //3、模拟粉丝发送文本消息给专用测试公众号，第三方平台方需在5秒内返回空串，表明暂时不回复，然后再立即使用客服消息接口发送消息回复粉丝
+                if (count($tmp_array) > 1) {
+                    $auth_code   = $tmp_array[1]; //实际内容
+                    $auth_info = $this->getWxAuthInfo($component_access_token,$auth_code);
+                    $app_access_token = $auth_info['authorization_info']['authorizer_access_token'];
+                    $reply_content = $auth_code . "_from_api";
+                    echo '';
+                    fastcgi_finish_request();
+                    $data = array(
+                        'touser' => $wechat2->getRevFrom(),
+                        'msgtype' => 'text',
+                        'text' => array('content' => $reply_content)
+                    );
+                    $url  = "https://api.weixin.qq.com/cgi-bin/message/custom/send?access_token=" . $app_access_token; // 客服消息接口
+                    $this->httpPost($url,$data);
+
+                } else {
+                    //2、模拟粉丝发送文本消息给专用测试公众号
+                    if ($content == 'TESTCOMPONENT_MSG_TYPE_TEXT'){
+                        $content_exec = "TESTCOMPONENT_MSG_TYPE_TEXT_callback";
+                    } else {
+                        $content_exec = '欢迎，其他消息回复敬请期待';
+                    }
+                }
+                break;
+            case 'event':
+                //1、模拟粉丝触发专用测试公众号的事件
+                $event_info    = $wechat2->getRevEvent();
+                $event = empty($event_info['event']) ? $event_info['key'] : $event_info['event'];
+                $content_exec = $event . "from_callback";
+                break;
+        }
+        $this->log('接收消息，原始为：' . $content . '---结束');
+        $this->log('接收消息，解密为：' . $content_exec . '---结束');
+
+        if($content_exec){
+            $wechat2->encrypt_type = 'aes';
+            $wechat2->text($content_exec)->reply();
+            //exit;
+        }
+    }
+
+
+    /**
+     * @todo: 查询小程序已经添加的插件列表
+     * @author： friker
+     * @date: 2019/4/10
+     * @param $app_access_token  小程序对应的token
+     * @return bool|mixed
+     */
+    public function getWxPluginList($app_access_token)
+    {
+        $params = array('action' => 'list');
+        $result = $this->httpPost(self::API_URL_PREFIX . self::WX_PLUGIN . $app_access_token, json_encode($params));
+        if ($result) {
+            $json = json_decode($result, true);
+            if (!$json || !empty($json['errcode'])) {
+                $this->log('test###--------------' . $result);
+                $this->errCode = $json['errcode'];
+                $this->errMsg  = $json['errmsg'];
+                return false;
+            }
+            return $json;
+        }
+        return false;
+    }
+
+
+    /**
+     * @todo: 微信小程序添加插件
+     * @author： friker
+     * @date: 2019/4/10
+     * @param $app_access_token 小程序token
+     * @param $plugin_appid 插件appid
+     * @return bool|mixed
+     */
+    public function addWxPlugin($app_access_token, $plugin_appid)
+    {
+        $params = array('action' => 'apply', 'plugin_appid' => $plugin_appid);
+        $result = $this->httpPost(self::API_URL_PREFIX . self::WX_PLUGIN . $app_access_token, json_encode($params));
+        if ($result) {
+            $json = json_decode($result, true);
+            if (!$json || !empty($json['errcode'])) {
+                $this->log('test###--------------' . $result);
+                $this->errCode = $json['errcode'];
+                $this->errMsg  = $json['errmsg'];
+                return false;
+            }
+            return $json;
+        }
+        return false;
+    }
+
+
+    /**
+     * @todo: 微信小程序删除插件
+     * @author： friker
+     * @date: 2019/4/10
+     * @param $app_access_token 小程序token
+     * @param $plugin_appid 插件appid
+     * @return bool|mixed
+     */
+    public function delWxPlugin($app_access_token, $plugin_appid)
+    {
+        $params = array('action' => 'unbind', 'plugin_appid' => $plugin_appid);
+        $result = $this->httpPost(self::API_URL_PREFIX . self::WX_PLUGIN . $app_access_token, json_encode($params));
+        if ($result) {
+            $json = json_decode($result, true);
+            if (!$json || !empty($json['errcode'])) {
+                $this->log('test###--------------' . $result);
+                $this->errCode = $json['errcode'];
+                $this->errMsg  = $json['errmsg'];
+                return false;
+            }
+            return $json;
+        }
+        return false;
+    }
+
+    /**
+     * @todo: 微信小程序更新插件
+     * @author： friker
+     * @date: 2019/4/10
+     * @param $app_access_token 小程序token
+     * @param $plugin_appid  插件appid
+     * @param $user_version  插件版本号
+     * @return bool|mixed
+     */
+    public function updateWxPlugin($app_access_token, $plugin_appid, $user_version)
+    {
+        $params = array('action' => 'update', 'user_version' => $user_version, 'plugin_appid' => $plugin_appid);
+        $result = $this->httpPost(self::API_URL_PREFIX . self::WX_PLUGIN . $app_access_token, json_encode($params));
+        if ($result) {
+            $json = json_decode($result, true);
+            if (!$json || !empty($json['errcode'])) {
+                $this->log('test###--------------' . $result);
+                $this->errCode = $json['errcode'];
+                $this->errMsg  = $json['errmsg'];
+                return false;
+            }
+            return $json;
+        }
+        return false;
     }
 }

@@ -22,7 +22,7 @@ class RedisCache extends BaseCache
         if (isset($config['unixSock'])) {
             $this->redis->connect($config['unixSock']);
         } else {
-            $this->redis->connect($config['host'], $config['port'] ?? 6379);
+            $this->redis->connect($config['host'], $config['port'] ? $config['port'] : 6379);
         }
         if ($config['password']) {
             $this->redis->auth($config['password']);

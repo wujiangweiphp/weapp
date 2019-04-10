@@ -90,6 +90,10 @@ class WxComponentService
     {
         $cfg                            = $this->wxComponentConfig;
         $cfg['component_verify_ticket'] = $this->getComponentVerifyTicket();
+        if(!$cfg['component_verify_ticket']){
+            $this->log('component_verify_ticket missing');
+            return false;
+        }
         if (!$this->wxComponent) {
             $this->wxComponent = new WxComponent($cfg['component_appid'],
                 $cfg['component_appsecret'], $cfg['component_verify_ticket'],
@@ -148,7 +152,7 @@ class WxComponentService
         $authName = "wxAppAuthCode" . $this->wxComponentAppId; // 通过authcode换取公众号的接口调用凭据
         try {
             $this->cache->setCache($authName, $authCode, $expireIn);
-            $componentAccessToken = $this->getComponentAccessTocken();
+            $componentAccessToken = $this->getComponentAccessToken();
             $authInfo             = $this->getWxComponent()->getWxAuthInfo($componentAccessToken, $authCode);
             if (!$authInfo) {
                 return array('code' => $this->getWxComponent()->errCode, 'msg' => $this->getWxComponent()->errMsg);
@@ -218,7 +222,7 @@ class WxComponentService
     public function onComponentEventNotify($raw)
     {
         $ret = $this->getWxComponent()->processEventNotify($raw);
-        if (is_array($ret)) {
+        if (is_array($ret) && isset($ret['InfoType'])) {
             switch ($ret['InfoType']) {
                 case "component_verify_ticket":
                     $authName = "wxComponentVerifyTicket" . $this->wxComponentAppId;
@@ -292,17 +296,20 @@ class WxComponentService
     {
         $authName       = "wxAppAccessToken" . $this->wxComponentAppId . "_" . $appId;
         $appAccessToken = $this->cache->getCache($authName);
+
         if ($appAccessToken) {
             return $appAccessToken;
         }
 
-        $componentAccessToken = $this->getComponentAccessTocken();
+        $componentAccessToken = $this->getComponentAccessToken();
+
 
         $authName        = "wxAppRefreshToken" . $this->wxComponentAppId . "_" . $appId;
         $appRefreshToken = $this->cache->getCache($authName);
-        if (!$appRefreshToken) {
-            return false;
-        }
+         if ($appRefreshToken == false) {
+             $this->log(' authorizer access_token error['.$appId.']');
+             return false;
+         }
 
         $refreshTokenInfo = $this->getWxComponent()->getWxAccessToken($componentAccessToken, $appId, $appRefreshToken);
         if (!$refreshTokenInfo) {
@@ -325,11 +332,11 @@ class WxComponentService
     {
         $authName    = "wxPreAuthCode" . $this->wxComponentAppId;
         $preAuthCode = $this->cache->getCache($authName);
-        if ($preAuthCode) {
+        if ($preAuthCode!=false) {
             return $preAuthCode;
         }
 
-        $componentAccessToken = $this->getComponentAccessTocken();
+        $componentAccessToken = $this->getComponentAccessToken();
         $preAuthCodeArr       = $this->getWxComponent()->getPreauthCode($componentAccessToken);
         $this->cache->setCache($authName, $preAuthCodeArr['pre_auth_code'], $preAuthCodeArr['expires_in'] - 10);
         return $preAuthCodeArr['pre_auth_code'];
@@ -339,17 +346,21 @@ class WxComponentService
      * 得到接口调用凭据
      * @return bool|string
      */
-    protected function getComponentAccessTocken()
+    protected function getComponentAccessToken()
     {
-        $authName              = "wxComponentAccessTocken" . $this->wxComponentAppId;
-        $componentAccessTocken = $this->cache->getCache($authName);
-        if ($componentAccessTocken) {
-            return $componentAccessTocken;
+        $authName              = "wxComponentAccessToken" . $this->wxComponentAppId;
+        $componentAccessToken = $this->cache->getCache($authName);
+        if ($componentAccessToken !=false) {
+            return $componentAccessToken;
+        }
+        $accessArr = $this->getWxComponent()->getAccessToken();
+        if($accessArr==false){
+            return false;
+        }else{
+            $this->cache->setCache($authName, $accessArr['component_access_token'], $accessArr['expires_in'] - 10);
+            return $accessArr['component_access_token'];
         }
 
-        $accessArr = $this->getWxComponent()->getAccessToken();
-        $this->cache->setCache($authName, $accessArr['component_access_token'], $accessArr['expires_in'] - 10);
-        return $accessArr['component_access_token'];
     }
 
     /**
@@ -384,7 +395,7 @@ class WxComponentService
      */
     public function getOauthAccessTokenForCode($appId)
     {
-        $ret = $this->getWxComponent()->getOauthAccessToken($appId, $this->getComponentAccessTocken());
+        $ret = $this->getWxComponent()->getOauthAccessToken($appId, $this->getComponentAccessToken());
         if ($ret) {
             $authName = "wxComponentOauthToken" . $this->wxComponentAppId . "_" . $appId;
             $this->cache->setCache($authName, $ret['access_token'], $ret['expires_in']);
@@ -413,7 +424,7 @@ class WxComponentService
             return false;
         }
 
-        $ret = $this->getWxComponent()->getOauthRefreshToken($appId, $refreshToken, $this->getComponentAccessTocken());
+        $ret = $this->getWxComponent()->getOauthRefreshToken($appId, $refreshToken, $this->getComponentAccessToken());
         if ($ret) {
             $authName = "wxComponentOauthToken" . $this->wxComponentAppId . "_" . $appId;
             $this->cache->setCache($authName, $ret['access_token'], $ret['expires_in']);
@@ -606,8 +617,20 @@ class WxComponentService
      */
     public function setMiniProgramDomain($appID, $params)
     {
-        return $this->getWxComponent()->setMiniProgramDomain($appID, $params, $this->getAppAccessToken($appID));
+        return $this->getWxComponent()->setMiniProgramDomain($params, $this->getAppAccessToken($appID));
     }
+
+    /**
+     * 代设置小程序业务域名
+     * @param $appID
+     * @param $params
+     * @return bool
+     */
+    public function setMiniProgramWebDomain($appID, $params)
+    {
+        return $this->getWxComponent()->setMiniProgramWebDomain($params, $this->getAppAccessToken($appID));
+    }
+
 
     /**
      * 给小程序上传代码
@@ -626,7 +649,7 @@ class WxComponentService
      */
     public function getDraftTemplateList()
     {
-        return $this->getWxComponent()->getDraftTemplateList($this->getComponentAccessTocken());
+        return $this->getWxComponent()->getDraftTemplateList($this->getComponentAccessToken());
     }
 
     /**
@@ -635,7 +658,7 @@ class WxComponentService
      */
     public function getTemplateList()
     {
-        return $this->getWxComponent()->getTemplateList($this->getComponentAccessTocken());
+        return $this->getWxComponent()->getTemplateList($this->getComponentAccessToken());
     }
 
     /**
@@ -645,7 +668,7 @@ class WxComponentService
      */
     public function auditDraftTemplate($draftID)
     {
-        return $this->getWxComponent()->auditDraftTemplate($this->getComponentAccessTocken(), $draftID);
+        return $this->getWxComponent()->auditDraftTemplate($this->getComponentAccessToken(), $draftID);
     }
 
     /**
@@ -655,7 +678,7 @@ class WxComponentService
      */
     public function deleteTemplate($templateID)
     {
-        return $this->getWxComponent()->deleteTemplate($this->getComponentAccessTocken(), $templateID);
+        return $this->getWxComponent()->deleteTemplate($this->getComponentAccessToken(), $templateID);
     }
 
     /**
@@ -696,7 +719,8 @@ class WxComponentService
      */
     public function auditTemplate($appid, $params)
     {
-        return $this->getWxComponent()->auditTemplate($params, $this->getAppAccessToken($appid));
+        $access_token  = $this->getAppAccessToken($appid);
+        return $this->getWxComponent()->auditTemplate($params, $access_token);
     }
 
     /**
@@ -740,5 +764,121 @@ class WxComponentService
     public function auditStatus($appid, $auditid)
     {
         return $this->getWxComponent()->getAuditStatus($auditid, $this->getAppAccessToken($appid));
+    }
+
+    /**
+     * 获取接口返回的错误信息
+     * @return string
+     */
+    public function getErrorMessage(){
+        return $this->getWxComponent()->errMsg;
+    }
+
+
+    /***************************************************** 代小程序实现业务分割线 ***************************************************/
+    /**.
+     * @todo: 第三方平台获取小程序的openid
+     * @author： friker
+     * @date: 2019/3/26
+     * @param string $appid  小程序 openid
+     * @param string $code  js传递的code
+     * @return bool|mixed
+     */
+    public function getOpenIdByCode($code ='',$appid = ''){
+        $access_token = $this->getComponentAccessToken();
+        return $this->getWxComponent()->getOpenidByCode($code,$appid,$access_token);
+    }
+
+    /**
+     * @todo: 获取小程序分享二维码
+     * @author： friker
+     * @date: 2019/3/26
+     * @param string $appid
+     * @param array $params
+     * @return bool|string
+     */
+    public function getWxQrCode($appid ='' ,$params = array()){
+        $app_access_token = $this->getAppAccessToken($appid);
+        return $this->getWxComponent()->getMicroQrCode($app_access_token,$params);
+    }
+
+    /**
+     * @todo: 获取小程序场景二维码
+     * @author： friker
+     * @date: 2019/3/26
+     * @param string $appid
+     * @param array $params
+     * @return bool|string
+     */
+    public function getWxSceneQrCode($appid ='' ,$params = array()){
+        $app_access_token = $this->getAppAccessToken($appid);
+        return $this->getWxComponent()->getSceneQrCode($app_access_token,$params);
+    }
+
+    /**
+     * @todo: 消息接收处理
+     * @author： friker
+     * @date: 2019/4/3
+     * @param string $appid
+     * @param $content
+     * @return array|bool
+     */
+    public function dealMessage($appid ='',$content){
+        $component_access_token = $this->getComponentAccessToken();
+        return $this->getWxComponent()->dealReceiveMessage($component_access_token,$content);
+    }
+
+    /************************************ 小程序插件管理部分 ******************************************/
+
+    /**
+     * @todo: 获取小程序已经添加的插件列表
+     * @author： friker
+     * @date: 2019/4/10
+     * @param string $appid   小程序appid
+     * @return bool|mixed
+     */
+    public function getWxPluginList($appid) {
+        $app_access_token = $this->getAppAccessToken($appid);
+        return $this->getWxComponent()->getWxPluginList($app_access_token);
+    }
+
+    /**
+     * @todo: 申请添加小程序插件
+     * @author： friker
+     * @date: 2019/4/10
+     * @param $appid 小程序appid
+     * @param $plugin_appid   插件appid
+     * @return bool|mixed
+     */
+    public function addWxPlugin($appid,$plugin_appid) {
+        $app_access_token = $this->getAppAccessToken($appid);
+        return $this->getWxComponent()->addWxPlugin($app_access_token,$plugin_appid);
+    }
+
+    /**
+     * @todo: 小程序插件更新
+     * @author： friker
+     * @date: 2019/4/10
+     * @param $appid  小程序appid
+     * @param $plugin_appid  小程序插件appid
+     * @param $user_version  插件版本
+     * @return bool|mixed
+     */
+    public function updateWxPlugin($appid,$plugin_appid,$user_version) {
+        $app_access_token = $this->getAppAccessToken($appid);
+        return $this->getWxComponent()->updateWxPlugin($app_access_token,$plugin_appid,$user_version);
+    }
+
+    /**
+     * @todo: 小程序插件删除
+     * @author： friker
+     * @date: 2019/4/10
+     * @param $appid   小程序appid
+     * @param $plugin_appid 小程序插件appid
+     * @return bool|mixed
+     */
+    public function delWxPlugin($appid,$plugin_appid) {
+        $app_access_token = $this->getAppAccessToken($appid);
+        return $this->getWxComponent()->delWxPlugin($app_access_token,$plugin_appid);
     }
 }
