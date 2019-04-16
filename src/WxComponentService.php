@@ -102,7 +102,7 @@ class WxComponentService
 
         return $this->wxComponent;
     }
-    protected function log($log)
+    public function log($log)
     {
         if ($this->debug && is_callable($this->logCallback)) {
             if (is_array($log)) {
@@ -244,6 +244,7 @@ class WxComponentService
                     break;
             }
         }
+        $this->log($ret); //记录消息解密
         return $ret;
     }
 
@@ -346,7 +347,7 @@ class WxComponentService
      * 得到接口调用凭据
      * @return bool|string
      */
-    protected function getComponentAccessToken()
+    public function getComponentAccessToken()
     {
         $authName              = "wxComponentAccessToken" . $this->wxComponentAppId;
         $componentAccessToken = $this->cache->getCache($authName);
@@ -360,7 +361,6 @@ class WxComponentService
             $this->cache->setCache($authName, $accessArr['component_access_token'], $accessArr['expires_in'] - 10);
             return $accessArr['component_access_token'];
         }
-
     }
 
     /**
@@ -828,6 +828,59 @@ class WxComponentService
         return $this->getWxComponent()->dealReceiveMessage($component_access_token,$content);
     }
 
+    /**
+     * @todo: 第三方消息回复
+     * @author： friker
+     * @date: 2019/4/11
+     * @param array $message_data  原始消息数组
+     * @param array|string $return_message 回复消息 
+     * @return array|bool
+     */
+    public function reply3rdMessage($message_data = array(),$return_message = array())
+    {
+        $component_access_token = $this->getComponentAccessToken();
+        return $this->getWxComponent()->reply3rdMessage($component_access_token,$message_data,$return_message);
+    }
+
+    /**
+     * @todo: 客服消息回复调用接口
+     * @author： friker
+     * @date: 2019/4/11
+     * @param string $appid
+     * @param array $return_message
+     * @return bool
+     */
+    public function replyKefuMessage($appid = '',$return_message = array())
+    {
+        $app_access_token = $this->getAppAccessToken($appid);
+        return $this->getWxComponent()->replyKefuMessage($app_access_token,$return_message);
+    }
+
+    /**
+     * @todo: 客服消息转接正常客服
+     * @author： friker
+     * @date: 2019/4/11
+     * @param array $return_message
+     * @return bool
+     */
+    public function transCustomMessage($return_message = array())
+    {
+        return $this->getWxComponent()->transCustomMessage($return_message);
+    }
+
+    /**
+     * @todo: 查询当前在线客服
+     * @author： friker
+     * @date: 2019/4/12
+     * @param $appid
+     * @return array|bool
+     */
+    public function getOnlineKFlist($appid)
+    {
+        $app_access_token = $this->getAppAccessToken($appid);
+        return $this->getWxComponent()->getOnlineKFlist($app_access_token);
+    }
+
     /************************************ 小程序插件管理部分 ******************************************/
 
     /**
@@ -880,5 +933,18 @@ class WxComponentService
     public function delWxPlugin($appid,$plugin_appid) {
         $app_access_token = $this->getAppAccessToken($appid);
         return $this->getWxComponent()->delWxPlugin($app_access_token,$plugin_appid);
+    }
+
+    /**
+     * @todo: 小程序素材上传
+     * @author： friker
+     * @date: 2019/4/11
+     * @param $appid
+     * @param $media_path
+     * @return bool|mixed
+     */
+    public function uploadMedia($appid,$media_path) {
+        $app_access_token = $this->getAppAccessToken($appid);
+        return $this->getWxComponent()->uploadMedia($app_access_token,$media_path);
     }
 }

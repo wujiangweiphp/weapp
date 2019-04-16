@@ -59,6 +59,8 @@ class WxComponent
     const GET_QR_CODE                 = '/wxa/getwxacode';               //获取场景二维码
     const GET_SCENE_QRCODE            = '/wxa/getwxacodeunlimit';        //获取小程序二维码
     const WX_PLUGIN                   = '/wxa/plugin?access_token=';                   //小程序相关的插件操作url
+    const WX_CUSTOM_SEND              = '/cgi-bin/message/custom/send?access_token=';   //客服消息接口
+    const WX_UPLOAD_MEDIA             = '/cgi-bin/media/upload?access_token=';          //上传素材 目前只支持 图片
 
     public $component_appid;
     public $component_appsecret;
@@ -722,7 +724,7 @@ class WxComponent
      * @param boolean $post_file 是否文件上传
      * @return string content
      */
-    private function httpPost($url, $param = "", $post_file = false)
+    public function httpPost($url, $param = "", $post_file = false)
     {
         $oCurl = curl_init();
         if (stripos($url, "https://") !== false) {
@@ -730,8 +732,31 @@ class WxComponent
             curl_setopt($oCurl, CURLOPT_SSL_VERIFYHOST, false);
             curl_setopt($oCurl, CURLOPT_SSLVERSION, 1); //CURL_SSLVERSION_TLSv1
         }
+        $strPOST = '';
+        $hadFile = false;
         if (is_string($param) || $post_file) {
-            $strPOST = $param;
+            if (is_array($param) && isset($param['media'])) {
+                /* 支持文件上传 */
+                if (class_exists('\CURLFile')){
+                    curl_setopt($oCurl, CURLOPT_SAFE_UPLOAD, true);
+                    foreach ($param as $key => $value) {
+                        $this->log('--------------url0----------'.$value);
+                        if (is_string($value) && strpos($value, '@') === 0 && is_file(realpath(ltrim($value, '@')))) {
+                            $this->log('--------------url----------'.$value);
+                            $param[$key] = new \CURLFile(realpath(ltrim($value, '@')));
+                            $this->log('--------------url3----------'.json_encode($param));
+                            $hadFile = true;
+                        }
+                    }
+                }elseif (defined('CURLOPT_SAFE_UPLOAD')) {
+                    if (is_string($value) && strpos($value, '@') === 0 && is_file(realpath(ltrim($value, '@')))) {
+                        curl_setopt($oCurl, CURLOPT_SAFE_UPLOAD, false);
+                        $hadFile = true;
+                    }
+                }
+            }else {
+                $strPOST = $param;
+            }
         } else {
             $aPOST = array();
             foreach ($param as $key => $val) {
@@ -747,18 +772,23 @@ class WxComponent
         }
         curl_setopt($oCurl, CURLOPT_URL, $url);
         curl_setopt($oCurl, CURLOPT_RETURNTRANSFER, 1);
-        if ($strPOST != "") {
+        if ($strPOST != "" || $hadFile) {
             curl_setopt($oCurl, CURLOPT_POST, true);
-            curl_setopt($oCurl, CURLOPT_POSTFIELDS, $strPOST);
+            if($hadFile){
+                curl_setopt($oCurl, CURLOPT_POSTFIELDS, $param);
+            }else{
+                curl_setopt($oCurl, CURLOPT_POSTFIELDS, $strPOST);
+            }
         }
         $sContent = curl_exec($oCurl);
         $aStatus  = curl_getinfo($oCurl);
+        $err = curl_error($oCurl);
         curl_close($oCurl);
         if (intval($aStatus["http_code"]) == 200) {
             $this->log("wxcomponent httpPost: {$strPOST},url is {$url}  recv:" . $sContent);
             return $sContent;
         } else {
-            $this->log("wxcomponent httpPost: {$strPOST} recv error {$url}, param:{$param} aStatus:" . print_r($aStatus, true));
+            $this->log("wxcomponent httpPost: {$strPOST} recv error {$url}, param: ".print_r($param,true).", error is {$err} Status:" . print_r($aStatus, true));
             return false;
         }
     }
@@ -1037,6 +1067,99 @@ class WxComponent
         }
     }
 
+    /**
+     * @todo: 处理第三方消息回复
+     * @author： friker
+     * @date: 2019/4/11
+     * @param $component_access_token
+     * @param $message_data
+     * @param $return_message
+     *         array(
+                      'content' 回复内容
+                      'type'  回复类型
+                      'encrypt_type' 加密算法
+     *            )
+     */
+    public function reply3rdMessage($component_access_token,$message_data,$return_message)
+    {
+        $param = array(
+            'token' => $this->token,
+            'appid' => $this->component_appid,
+            'encodingaeskey' => $this->encodingAesKey
+        );
+        $wechat2 = new \Wechat2($param);
+        $wechat2->_receive = $message_data; // 传过来已经解析成数组了
+        $wechat2->encrypt_type = empty($return_message['encrypt_type']) ? 'aes' : $return_message['encrypt_type'];
+        if (empty($return_message['type'])) {
+            return $wechat2->text($return_message['content'])->reply();
+        }
+        return $wechat2->{$return_message['type']}($return_message['content'])->reply();
+    }
+
+    /**
+     * @todo: 转接客服
+     * @author： friker
+     * @date: 2019/4/12
+     * @param $message_data
+     * @return bool|string
+     */
+    public function transCustomMessage($message_data)
+    {
+        $param = array(
+            'token' => $this->token,
+            'appid' => $this->component_appid,
+            'encodingaeskey' => $this->encodingAesKey
+        );
+        $wechat2 = new \Wechat2($param);
+        $wechat2->_receive = $message_data; // 传过来已经解析成数组了
+        $wechat2->encrypt_type = empty($return_message['encrypt_type']) ? 'aes' : $return_message['encrypt_type'];
+        $wechat2->transfer_customer_service()->reply();
+    }
+
+    /**
+     * @todo: 查询当前在线客服信息
+     * @author： friker
+     * @date: 2019/4/12
+     * @param $app_access_token
+     * @return array|bool
+     */
+    public function getOnlineKFlist($app_access_token)
+    {
+        $param = array(
+            'token' => $this->token,
+            'appid' => $this->component_appid,
+            'encodingaeskey' => $this->encodingAesKey
+        );
+        $wechat2 = new \Wechat2($param);
+        $wechat2->access_token = $app_access_token;
+        return $wechat2->getCustomServiceOnlineKFlist();
+    }
+
+    /**
+     * @todo: 客服消息回复接口
+     * @author： friker
+     * @date: 2019/4/11
+     * @param string $app_access_token
+     * @param array $return_message
+     * @return bool
+     */
+    public function replyKefuMessage($app_access_token = '',$return_message = array())
+    {
+        $params = $return_message['content'];
+        $result = $this->httpPost(self::API_URL_PREFIX_MINI_PROGRAM . self::WX_CUSTOM_SEND . $app_access_token, json_encode($params,JSON_UNESCAPED_UNICODE));
+        if ($result) {
+            $json = json_decode($result, true);
+            if (!$json || !empty($json['errcode'])) {
+                $this->log('test###--------------' . $result);
+                $this->errCode = $json['errcode'];
+                $this->errMsg  = $json['errmsg'];
+                return false;
+            }
+            return true;
+        }
+        return false;
+    }
+
 
     /**
      * @todo: 查询小程序已经添加的插件列表
@@ -1138,5 +1261,39 @@ class WxComponent
             return $json;
         }
         return false;
+    }
+
+    /**
+     * 新增永久素材  （需用到CURLFile 需要重写CURL）
+     * @param string $app_access_token  小程序token
+     * @param string $file_path  文件实际路径
+     * @return bool|mixed
+     */
+    public function uploadMedia($app_access_token, $file_path)
+    {
+        $api_url = self::API_URL_PREFIX_MINI_PROGRAM . self::WX_UPLOAD_MEDIA . $app_access_token .'&type=image';
+
+        $data = array();
+        $data['media'] = '@' . $file_path;
+        if (class_exists('\CURLFile')) {
+            $data['media'] = new \CURLFile($file_path);
+        }
+        
+        $ch = curl_init($api_url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_setopt($ch, CURLOPT_HEADER, 0);
+        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+
+        $response = curl_exec($ch);
+        $error  = curl_error($ch);
+        $response = json_decode($response, true);
+        curl_close($ch);
+        if (isset($response['errcode']) && $response['errcode'] != 0) {
+            $this->log('error 新增临时素材:' . $response['errmsg'] . '(' . $response['errcode'] . ') error is '.$error);
+            return false;
+        } else {
+            return $response;
+        }
     }
 }
